@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0d12" />
+    <title>Mini Roguelike Survival</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="player.js" defer></script>
+    <script src="room.js" defer></script>
+    <script src="map.js" defer></script>
+    <script src="enemy.js" defer></script>
+    <script src="projectile.js" defer></script>
+    <script src="weapon.js" defer></script>
+    <script src="upgrade.js" defer></script>
+    <script src="progression.js" defer></script>
+    <script src="main.js" defer></script>
+  </head>
+  <body>
+    <main id="game" aria-label="Mini Roguelike Survival">
+      <canvas id="game-canvas" aria-label="Game canvas"></canvas>
+      <section id="room-ui" aria-live="polite" aria-label="Room and door selection">
+        <div id="room-status"></div>
+        <div id="run-hud" aria-live="polite">
+          <div class="run-hud-row">
+            <span id="run-level-label"></span>
+            <span id="exp-label"></span>
+          </div>
+          <div id="exp-track" aria-label="Experience progress">
+            <div id="exp-fill"></div>
+          </div>
+          <div id="evolution-status" aria-live="polite" hidden></div>
+        </div>
+        <div id="enemy-status" hidden></div>
+        <div id="door-options" aria-label="Available doors"></div>
+      </section>
+      <section id="level-up-panel" role="dialog" aria-modal="true" aria-labelledby="level-up-title" hidden>
+        <div class="level-up-content">
+          <h1 id="level-up-title">LEVEL UP</h1>
+          <p>Choose one upgrade</p>
+          <div id="upgrade-choices"></div>
+        </div>
+      </section>
+      <section id="run-end-screen" role="dialog" aria-modal="true" aria-labelledby="run-end-title" hidden>
+        <div class="run-end-content">
+          <h1 id="run-end-title"></h1>
+          <div id="run-end-stats"></div>
+          <button id="continue-run" type="button">CONTINUE</button>
+        </div>
+      </section>
+      <section id="main-menu" aria-labelledby="menu-title" hidden>
+        <div class="menu-content">
+          <p class="menu-kicker">ROOM-BASED SURVIVAL</p>
+          <h1 id="menu-title">MINI ROGUELIKE</h1>
+          <div class="meta-summary">
+            <strong id="meta-level-label">PLAYER LEVEL 01</strong>
+            <span id="meta-exp-label">META EXP 0 / 20</span>
+            <div id="meta-exp-track"><div id="meta-exp-fill"></div></div>
+          </div>
+          <h2>PERMANENT UPGRADES</h2>
+          <ul id="permanent-upgrade-list"></ul>
+          <div id="best-run-summary"></div>
+          <button id="play-button" type="button">PLAY</button>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
