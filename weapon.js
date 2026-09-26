@@ -4,6 +4,9 @@ window.WeaponSystem = class WeaponSystem {
       "spinningBlade",
       "homingOrb",
       "lightningChain",
+      "ghostCompanion",
+      "meteorCall",
+      "whipCrack",
       "thornAura",
       "boomerangAxe",
       ...unlockedWeapons,
@@ -24,6 +27,11 @@ window.WeaponSystem = class WeaponSystem {
     this.turretCooldown = 0.2;
     this.poisonCooldown = 1;
     this.poisonClouds = [];
+    this.whipCooldown = 0.4;
+    this.whipEffect = null;
+    this.meteorCooldown = 1;
+    this.meteors = [];
+    this.ghost = { x: 0, y: 0, cooldown: 0, target: null, trail: null };
     this.evolutions = {
       bladeStorm: { unlocked: false, cooldown: 10, active: 0, pulse: 0 },
       voidPull: { unlocked: false, cooldown: 10, active: 0 },
@@ -52,6 +60,12 @@ window.WeaponSystem = class WeaponSystem {
     this.turretCooldown = 0.2;
     this.poisonCooldown = 1;
     this.poisonClouds = [];
+    this.whipCooldown = 0.4;
+    this.whipEffect = null;
+    this.meteorCooldown = 1;
+    this.meteors = [];
+    this.ghost.target = null;
+    this.ghost.trail = null;
   }
 
   getAttackSpeed(player, passiveLevels) {
@@ -86,6 +100,9 @@ window.WeaponSystem = class WeaponSystem {
     this.updateHomingOrb(deltaSeconds, player, livingEnemies, attackSpeed);
     this.updateTurretDrone(deltaSeconds, player, livingEnemies, attackSpeed);
     this.updatePoisonCloud(deltaSeconds, player, livingEnemies, attackSpeed, onEnemyHit);
+    this.updateGhostCompanion(deltaSeconds, player, livingEnemies, attackSpeed, onEnemyHit);
+    this.updateMeteorCall(deltaSeconds, livingEnemies, attackSpeed, onEnemyHit);
+    this.updateWhipCrack(deltaSeconds, player, livingEnemies, attackSpeed, onEnemyHit);
     this.updateEvolutions(deltaSeconds, player, livingEnemies, passiveLevels, onEnemyHit);
 
     this.projectiles.forEach((projectile) => projectile.update(deltaSeconds, livingEnemies, onEnemyHit, player));
@@ -169,6 +186,116 @@ window.WeaponSystem = class WeaponSystem {
       }
     });
     this.poisonClouds = this.poisonClouds.filter((cloud) => cloud.life > 0);
+  }
+
+  updateGhostCompanion(deltaSeconds, player, enemies, attackSpeed, onEnemyHit) {
+    const level = this.getWeaponLevel("ghostCompanion");
+    if (level <= 0) return;
+
+    const direction = player.lastMoveDirection || { x: 0, y: -1 };
+    const followX = player.x - direction.x * 30 - direction.y * 22;
+    const followY = player.y - direction.y * 30 + direction.x * 22;
+    this.ghost.x += (followX - this.ghost.x) * Math.min(1, deltaSeconds * 8);
+    this.ghost.y += (followY - this.ghost.y) * Math.min(1, deltaSeconds * 8);
+    this.ghost.cooldown = Math.max(0, this.ghost.cooldown - deltaSeconds);
+    if (this.ghost.trail) this.ghost.trail.life -= deltaSeconds;
+    if (this.ghost.trail && this.ghost.trail.life <= 0) this.ghost.trail = null;
+
+    if (this.ghost.target) {
+      if (this.ghost.target.isDead) {
+        this.ghost.target = null;
+        this.ghost.cooldown = 0.25;
+        return;
+      }
+      const target = this.ghost.target;
+      const dx = target.x - this.ghost.x;
+      const dy = target.y - this.ghost.y;
+      const distance = Math.hypot(dx, dy);
+      const travel = 420 * deltaSeconds;
+      if (distance <= travel + target.radius + 10) {
+        this.ghost.x = target.x;
+        this.ghost.y = target.y;
+        onEnemyHit(target, this.getDamage("ghostCompanion", 14));
+        this.ghost.trail = { x1: followX, y1: followY, x2: target.x, y2: target.y, life: 0.18 };
+        this.ghost.target = null;
+        this.ghost.cooldown = this.getCooldown("ghostCompanion", 1.15, attackSpeed);
+      } else if (distance > 0) {
+        this.ghost.x += (dx / distance) * travel;
+        this.ghost.y += (dy / distance) * travel;
+      }
+      return;
+    }
+
+    if (this.ghost.cooldown > 0 || enemies.length === 0) return;
+    const target = this.findNearestEnemy(player.x, player.y, enemies);
+    if (target && Math.hypot(target.x - player.x, target.y - player.y) <= 190) {
+      this.ghost.target = target;
+    }
+  }
+
+  updateMeteorCall(deltaSeconds, enemies, attackSpeed, onEnemyHit) {
+    const level = this.getWeaponLevel("meteorCall");
+    this.meteorCooldown = Math.max(0, this.meteorCooldown - deltaSeconds);
+    this.meteors.forEach((meteor) => {
+      if (meteor.phase === "tell") {
+        meteor.remaining -= deltaSeconds;
+        if (meteor.remaining <= 0) {
+          enemies.forEach((enemy) => {
+            if (Math.hypot(enemy.x - meteor.x, enemy.y - meteor.y) <= 96 + enemy.radius) {
+              onEnemyHit(enemy, this.getDamage("meteorCall", 30));
+            }
+          });
+          meteor.phase = "blast";
+          meteor.remaining = 0.24;
+        }
+      } else {
+        meteor.remaining -= deltaSeconds;
+      }
+    });
+    this.meteors = this.meteors.filter((meteor) => meteor.remaining > 0);
+
+    if (level <= 0 || enemies.length === 0 || this.meteorCooldown > 0) return;
+    const target = enemies[Math.floor(Math.random() * enemies.length)];
+    this.meteors.push({
+      x: target.x + (Math.random() - 0.5) * 72,
+      y: target.y + (Math.random() - 0.5) * 72,
+      phase: "tell",
+      remaining: 0.7,
+    });
+    this.meteorCooldown = this.getCooldown("meteorCall", 3.2, attackSpeed);
+  }
+
+  updateWhipCrack(deltaSeconds, player, enemies, attackSpeed, onEnemyHit) {
+    const level = this.getWeaponLevel("whipCrack");
+    this.whipCooldown = Math.max(0, this.whipCooldown - deltaSeconds);
+    if (this.whipEffect) {
+      this.whipEffect.remaining -= deltaSeconds;
+      if (this.whipEffect.remaining <= 0) this.whipEffect = null;
+    }
+    if (level <= 0 || enemies.length === 0 || this.whipCooldown > 0) return;
+
+    const direction = player.lastMoveDirection || { x: 0, y: -1 };
+    const reach = 210;
+    const width = 26;
+    let hitAny = false;
+    enemies.forEach((enemy) => {
+      const dx = enemy.x - player.x;
+      const dy = enemy.y - player.y;
+      const forward = dx * direction.x + dy * direction.y;
+      const across = Math.abs(dx * direction.y - dy * direction.x);
+      if (forward < 0 || forward > reach + enemy.radius || across > width + enemy.radius) return;
+      onEnemyHit(enemy, this.getDamage("whipCrack", 16));
+      hitAny = true;
+    });
+    if (!hitAny) return;
+
+    this.whipEffect = {
+      x: player.x,
+      y: player.y,
+      direction: { ...direction },
+      remaining: 0.2,
+    };
+    this.whipCooldown = this.getCooldown("whipCrack", 1.1, attackSpeed);
   }
 
   updateEvolutions(deltaSeconds, player, enemies, passiveLevels, onEnemyHit) {
@@ -380,6 +507,69 @@ window.WeaponSystem = class WeaponSystem {
       context.lineWidth = 2;
       context.stroke();
     }
+
+    if (this.getWeaponLevel("ghostCompanion") > 0) {
+      const ghost = this.ghost;
+      if (ghost.trail) {
+        context.save();
+        context.globalAlpha = Math.min(1, ghost.trail.life / 0.08);
+        context.strokeStyle = "#a9e8ee";
+        context.lineWidth = 3;
+        context.beginPath();
+        context.moveTo(ghost.trail.x1, ghost.trail.y1);
+        context.lineTo(ghost.trail.x2, ghost.trail.y2);
+        context.stroke();
+        context.restore();
+      }
+      context.beginPath();
+      context.arc(ghost.x, ghost.y, 11, 0, Math.PI * 2);
+      context.fillStyle = "#7ac5ce";
+      context.fill();
+      context.strokeStyle = "#d3ffff";
+      context.lineWidth = 2;
+      context.stroke();
+    }
+
+    if (this.whipEffect) {
+      const effect = this.whipEffect;
+      const progress = 1 - effect.remaining / 0.2;
+      const endX = effect.x + effect.direction.x * 210;
+      const endY = effect.y + effect.direction.y * 210;
+      const bend = Math.sin(progress * Math.PI) * 36;
+      const controlX = (effect.x + endX) / 2 - effect.direction.y * bend;
+      const controlY = (effect.y + endY) / 2 + effect.direction.x * bend;
+      context.save();
+      context.globalAlpha = Math.min(1, effect.remaining / 0.07);
+      context.strokeStyle = "#fff0be";
+      context.lineWidth = 8;
+      context.lineCap = "round";
+      context.beginPath();
+      context.moveTo(effect.x, effect.y);
+      context.quadraticCurveTo(controlX, controlY, endX, endY);
+      context.stroke();
+      context.restore();
+    }
+
+    this.meteors.forEach((meteor) => {
+      context.save();
+      if (meteor.phase === "tell") {
+        context.globalAlpha = 0.5 + 0.3 * Math.sin((0.7 - meteor.remaining) * 18);
+        context.beginPath();
+        context.ellipse(meteor.x, meteor.y, 96, 28, 0, 0, Math.PI * 2);
+        context.fillStyle = "#211819";
+        context.fill();
+        context.strokeStyle = "#e56d4e";
+        context.lineWidth = 3;
+        context.stroke();
+      } else {
+        context.globalAlpha = Math.min(0.75, meteor.remaining * 3);
+        context.beginPath();
+        context.arc(meteor.x, meteor.y, 96, 0, Math.PI * 2);
+        context.fillStyle = "#f07849";
+        context.fill();
+      }
+      context.restore();
+    });
 
     this.poisonClouds.forEach((cloud) => {
       context.save();

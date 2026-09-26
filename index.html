@@ -13,6 +13,7 @@
     <script src="projectile.js" defer></script>
     <script src="weapon.js" defer></script>
     <script src="upgrade.js" defer></script>
+    <script src="shop.js" defer></script>
     <script src="progression.js" defer></script>
     <script src="main.js" defer></script>
   </head>
@@ -22,6 +23,18 @@
       <section id="room-ui" aria-live="polite" aria-label="Room and door selection">
         <div id="room-status"></div>
         <div id="run-hud" aria-live="polite">
+          <div class="run-hud-row">
+            <span>COINS</span>
+            <span id="currency-label">0</span>
+          </div>
+          <div class="run-hud-row">
+            <span>HP</span>
+            <span id="hp-label"></span>
+          </div>
+          <div id="hp-track" aria-label="Health">
+            <div id="hp-fill"></div>
+          </div>
+          <div id="second-wind-status" aria-live="polite" hidden></div>
           <div class="run-hud-row">
             <span id="run-level-label"></span>
             <span id="exp-label"></span>

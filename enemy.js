@@ -277,8 +277,12 @@
         return;
       }
       if (room.type === "ELITE") {
-        const elite = this.spawnOne("ELITE", width, height, player);
-        elite.expValue = getCombatExperienceReward(room.depth / routeLength) * 2;
+        const eliteCount = Math.random() < 0.5 ? 1 : 2;
+        const totalExperience = getCombatExperienceReward(room.depth / routeLength) * 2;
+        for (let index = 0; index < eliteCount; index += 1) {
+          const elite = this.spawnOne("ELITE", width, height, player);
+          elite.expValue = totalExperience / eliteCount;
+        }
         return;
       }
       if (room.type !== "COMBAT") return;

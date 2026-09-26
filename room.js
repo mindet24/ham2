@@ -33,6 +33,10 @@
       nextRoomIds: [],
       encounterCleared: !["COMBAT", "ELITE", "BOSS"].includes(type.key),
       cleared: false,
+      restChoiceMade: false,
+      treasureOpened: false,
+      treasureChoiceMade: false,
+      shopOffers: null,
     };
   }
 

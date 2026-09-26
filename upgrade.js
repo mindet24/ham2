@@ -3,6 +3,9 @@
     { id: "spinningBlade", name: "Spinning Blade", icon: "🗡️" },
     { id: "homingOrb", name: "Homing Orb", icon: "🔮" },
     { id: "lightningChain", name: "Lightning Chain", icon: "⚡" },
+    { id: "ghostCompanion", name: "Ghost Companion", icon: "👻" },
+    { id: "meteorCall", name: "Meteor Call", icon: "☄️" },
+    { id: "whipCrack", name: "Whip Crack", icon: "〰️" },
     { id: "thornAura", name: "Thorn Aura", icon: "🌿" },
     { id: "boomerangAxe", name: "Boomerang Axe", icon: "🪓" },
     { id: "turretDrone", name: "Turret Drone", icon: "🛸" },
@@ -13,6 +16,9 @@
     { id: "magnetCore", name: "Magnet Core", icon: "🧲" },
     { id: "bloodPact", name: "Blood Pact", icon: "🩸" },
     { id: "adrenaline", name: "Adrenaline", icon: "💉" },
+    { id: "luckyCoin", name: "Lucky Coin", icon: "🪙" },
+    { id: "mirrorShard", name: "Mirror Shard", icon: "🪞" },
+    { id: "secondWind", name: "Second Wind", icon: "💨" },
   ];
 
   function shuffle(items) {
@@ -131,6 +137,7 @@
 
       PASSIVE_POOL.forEach((passive) => {
         const currentLevel = this.getPassiveLevel(passive.id);
+        if (passive.id === "secondWind" && currentLevel > 0) return;
         if (currentLevel >= 5) return;
         const nextLevel = currentLevel + 1;
         candidates.push({
@@ -151,6 +158,9 @@
     getPassiveDescription(passiveId, level) {
       if (passiveId === "magnetCore") return `Pickup Range +20% per level (Lv. ${level}).`;
       if (passiveId === "bloodPact") return `Max HP +10 and Move Speed -3% per level (Lv. ${level}).`;
+      if (passiveId === "secondWind") return "Revive once per Run with half Max HP when a hit would be fatal.";
+      if (passiveId === "luckyCoin") return `10% chance for double currency drops per level (Lv. ${level}).`;
+      if (passiveId === "mirrorShard") return `10% chance to repeat a weapon hit for full damage per level (Lv. ${level}).`;
       return `When HP is below 30%, Attack Speed +25% per level (Lv. ${level}).`;
     }
 

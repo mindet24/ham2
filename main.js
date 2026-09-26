@@ -7,6 +7,10 @@
   const runLevelLabel = document.querySelector("#run-level-label");
   const expLabel = document.querySelector("#exp-label");
   const expFill = document.querySelector("#exp-fill");
+  const hpLabel = document.querySelector("#hp-label");
+  const hpFill = document.querySelector("#hp-fill");
+  const secondWindStatus = document.querySelector("#second-wind-status");
+  const currencyLabel = document.querySelector("#currency-label");
   const levelUpPanel = document.querySelector("#level-up-panel");
   const upgradeChoices = document.querySelector("#upgrade-choices");
   const levelUpTitle = document.querySelector("#level-up-title");
@@ -41,9 +45,20 @@
     expCrystals: new window.ExpCrystalSystem(),
     progression: new window.RunProgression(),
     upgrades: new window.UpgradeSystem(),
+    currency: new window.RunCurrency(),
+    shop: new window.ShopSystem(),
+    upgradeChoiceContext: "level-up",
     metaProgression: new window.MetaProgression(),
     metaRewardResult: null,
+    secondWind: {
+      permanentAvailable: false,
+      passiveUsed: false,
+    },
     damageNumbers: [],
+    particles: [],
+    screenShake: 0,
+    audioContext: null,
+    lastHitSoundAt: 0,
     hitStopFrames: 0,
     contactDamageCooldown: 0,
     levelUpPaused: false,
@@ -64,9 +79,95 @@
   let viewportWidth = window.innerWidth;
   let viewportHeight = window.innerHeight;
 
+  function playFeedbackSound(kind) {
+    const now = performance.now();
+    if (kind === "hit" && now - game.lastHitSoundAt < 90) return;
+    game.lastHitSoundAt = now;
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
+      game.audioContext ||= new AudioContextClass();
+      const audio = game.audioContext;
+      if (audio.state === "suspended") audio.resume();
+      const oscillator = audio.createOscillator();
+      const gain = audio.createGain();
+      const startAt = audio.currentTime;
+      oscillator.type = kind === "death" ? "triangle" : "sine";
+      oscillator.frequency.setValueAtTime(kind === "death" ? 620 : 250, startAt);
+      oscillator.frequency.exponentialRampToValueAtTime(kind === "death" ? 180 : 110, startAt + 0.09);
+      gain.gain.setValueAtTime(0.035, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.1);
+      oscillator.connect(gain);
+      gain.connect(audio.destination);
+      oscillator.start(startAt);
+      oscillator.stop(startAt + 0.11);
+    } catch (error) {
+      // Sound is optional on browsers that block or omit Web Audio.
+    }
+  }
+
+  function spawnDeathBurst(x, y) {
+    const colors = ["#ffcf70", "#ff806e", "#fff0b3"];
+    for (let index = 0; index < 12; index += 1) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 45 + Math.random() * 125;
+      const life = 0.25 + Math.random() * 0.22;
+      game.particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life,
+        maxLife: life,
+        radius: 2 + Math.random() * 3,
+        color: colors[Math.floor(Math.random() * colors.length)],
+      });
+    }
+  }
+
+  function updateParticles(deltaSeconds) {
+    game.particles.forEach((particle) => {
+      particle.x += particle.vx * deltaSeconds;
+      particle.y += particle.vy * deltaSeconds;
+      particle.vx *= Math.max(0, 1 - 2.8 * deltaSeconds);
+      particle.vy *= Math.max(0, 1 - 2.8 * deltaSeconds);
+      particle.life -= deltaSeconds;
+    });
+    game.particles = game.particles.filter((particle) => particle.life > 0);
+    game.screenShake = Math.max(0, game.screenShake - 30 * deltaSeconds);
+  }
+
+  function drawParticles() {
+    game.particles.forEach((particle) => {
+      context.globalAlpha = Math.max(0, particle.life / particle.maxLife);
+      context.fillStyle = particle.color;
+      context.beginPath();
+      context.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+      context.fill();
+    });
+    context.globalAlpha = 1;
+  }
+
   function renderRunHud() {
     const progression = game.progression;
     const percentage = Math.min(100, (progression.experience / progression.experienceToNextLevel) * 100);
+    const hpPercentage = Math.max(0, Math.min(100, (game.player.stats.hp / game.player.stats.maxHp) * 100));
+    hpLabel.textContent = `${Math.ceil(game.player.stats.hp)}/${Math.ceil(game.player.stats.maxHp)}`;
+    hpFill.style.width = `${hpPercentage}%`;
+    const permanentSecondWindUnlocked = game.metaProgression.data.permanentUpgrades.includes("secondWind");
+    const passiveSecondWindOwned = game.upgrades.getPassiveLevel("secondWind") > 0;
+    const windStatus = [];
+    if (permanentSecondWindUnlocked) {
+      windStatus.push(`Permanent ${game.secondWind.permanentAvailable ? "READY" : "USED"}`);
+    }
+    if (passiveSecondWindOwned) {
+      windStatus.push(`Passive ${game.secondWind.passiveUsed ? "USED" : "READY"}`);
+    }
+    secondWindStatus.hidden = windStatus.length === 0;
+    secondWindStatus.textContent = windStatus.length > 0
+      ? `SECOND WIND · ${windStatus.join(" + ")}`
+      : "";
+    currencyLabel.textContent = game.currency.amount;
     runLevelLabel.textContent = `RUN LEVEL ${progression.level}`;
     expLabel.textContent = `EXP ${Math.floor(progression.experience)}/${progression.experienceToNextLevel}`;
     expFill.style.width = `${percentage}%`;
@@ -148,12 +249,21 @@
     game.expCrystals = new window.ExpCrystalSystem();
     game.progression = new window.RunProgression();
     game.upgrades = new window.UpgradeSystem();
+    game.currency = new window.RunCurrency();
+    game.shop = new window.ShopSystem();
+    game.upgradeChoiceContext = "level-up";
     game.damageNumbers = [];
+    game.particles = [];
+    game.screenShake = 0;
     game.hitStopFrames = 0;
     game.contactDamageCooldown = 0;
     game.levelUpPaused = false;
     game.ended = false;
     game.metaRewardResult = null;
+    game.secondWind = {
+      permanentAvailable: game.metaProgression.data.permanentUpgrades.includes("secondWind"),
+      passiveUsed: false,
+    };
     game.runStats = {
       roomsCleared: 0,
       enemiesDefeated: 0,
@@ -176,7 +286,13 @@
 
   function renderRoomUI() {
     const currentRoom = game.rooms.getCurrentRoom();
-    roomStatus.textContent = `${currentRoom.icon} ${currentRoom.label} — Room ${currentRoom.depth}/${game.rooms.routeLength}`;
+    const roomTitle = `${currentRoom.icon} ${currentRoom.label} — Room ${currentRoom.depth}/${game.rooms.routeLength}`;
+    const roomResult = currentRoom.restResult || currentRoom.treasureResult;
+    roomStatus.textContent = currentRoom.type === "REST" && !currentRoom.restChoiceMade
+      ? `${roomTitle} · Choose one benefit`
+      : roomResult
+        ? `${roomTitle} · ${roomResult}`
+        : roomTitle;
     doorOptions.replaceChildren();
 
     const locked = game.rooms.isCurrentRoomLocked();
@@ -184,6 +300,84 @@
     enemyStatus.textContent = locked
       ? `🔒 ${game.enemies.getLivingCount()} enemies remaining — defeat them to unlock doors`
       : "";
+
+    if (currentRoom.type === "REST" && !currentRoom.restChoiceMade) {
+      const recoverButton = document.createElement("button");
+      recoverButton.type = "button";
+      recoverButton.className = "rest-choice-button";
+      recoverButton.textContent = "♥ Recover · Restore 30% Max HP";
+      recoverButton.addEventListener("click", () => {
+        const restored = Math.round(game.player.stats.maxHp * 0.3);
+        game.player.stats.hp = Math.min(
+          game.player.stats.maxHp,
+          game.player.stats.hp + restored,
+        );
+        currentRoom.restResult = `Recovered ${restored} HP`;
+        currentRoom.restChoiceMade = true;
+        renderRunHud();
+        renderRoomUI();
+      });
+
+      const buffButton = document.createElement("button");
+      buffButton.type = "button";
+      buffButton.className = "rest-choice-button";
+      buffButton.textContent = "⚔ Take a stand · +10% Damage this Run";
+      buffButton.addEventListener("click", () => {
+        game.player.stats.damage *= 1.1;
+        currentRoom.restResult = "Damage increased by 10% this Run";
+        currentRoom.restChoiceMade = true;
+        renderRoomUI();
+      });
+
+      doorOptions.append(recoverButton, buffButton);
+      return;
+    }
+
+    if (currentRoom.type === "TREASURE" && !currentRoom.treasureChoiceMade) {
+      const chestButton = document.createElement("button");
+      chestButton.type = "button";
+      chestButton.className = "rest-choice-button treasure-choice-button";
+      chestButton.textContent = currentRoom.treasureOpened
+        ? "📦 Chest opened · Choose a reward"
+        : "📦 Open Treasure Chest";
+      chestButton.disabled = currentRoom.treasureOpened;
+      chestButton.addEventListener("click", () => openTreasureChest(currentRoom));
+      doorOptions.append(chestButton);
+      return;
+    }
+
+    if (currentRoom.type === "SHOP") {
+      if (!currentRoom.shopOffers) {
+        currentRoom.shopOffers = game.shop.createOffers(game.upgrades, game.weapons);
+      }
+      if (currentRoom.shopOffers.length === 0) {
+        const soldOut = document.createElement("div");
+        soldOut.className = "shop-empty-message";
+        soldOut.textContent = "No upgrades available · Leave through a door";
+        doorOptions.append(soldOut);
+      }
+      currentRoom.shopOffers.forEach((offer) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "shop-offer-button";
+        button.disabled = offer.purchased || game.currency.amount < offer.price;
+        button.textContent = offer.purchased
+          ? `✓ ${offer.choice.title} · SOLD`
+          : `${offer.choice.icon} ${offer.choice.title} · ${offer.price} coins`;
+        button.addEventListener("click", () => {
+          if (offer.purchased || !game.currency.spend(offer.price)) return;
+          if (!game.upgrades.apply(offer.choice, game.weapons, game.player)) {
+            game.currency.amount += offer.price;
+            return;
+          }
+          offer.purchased = true;
+          renderRunHud();
+          renderEvolutionStatus();
+          renderRoomUI();
+        });
+        doorOptions.append(button);
+      });
+    }
 
     const exits = game.rooms.getDoorChoices();
     if (exits.length === 0) {
@@ -208,6 +402,7 @@
         game.contactDamageCooldown = 0;
         game.weapons.resetForRoom();
         game.expCrystals.clear();
+        game.currency.clearRoomDrops();
         const enteredRoom = game.rooms.getCurrentRoom();
         game.enemies.spawnForRoom(
           enteredRoom,
@@ -242,15 +437,47 @@
       button.append(title, subtitle, description);
       button.addEventListener("click", () => {
         if (!game.upgrades.apply(choice, game.weapons, game.player)) return;
+        if (choice.kind === "passive" && choice.id === "secondWind") {
+          game.secondWind.passiveUsed = false;
+        }
         game.player.clearKeys();
         levelUpPanel.hidden = true;
         game.levelUpPaused = false;
+        if (game.upgradeChoiceContext === "treasure") {
+          game.upgradeChoiceContext = "level-up";
+          const room = game.rooms.getCurrentRoom();
+          room.treasureChoiceMade = true;
+          room.treasureResult = `${choice.title} claimed`;
+          renderRunHud();
+          renderEvolutionStatus();
+          renderRoomUI();
+          return;
+        }
         renderRunHud();
         renderEvolutionStatus();
         openLevelUpIfReady();
       });
       upgradeChoices.append(button);
     });
+  }
+
+  function openTreasureChest(room) {
+    if (room.treasureOpened || room.treasureChoiceMade) return;
+    room.treasureOpened = true;
+    const choices = game.upgrades.getChoices(game.weapons);
+    if (choices.length === 0) {
+      room.treasureChoiceMade = true;
+      room.treasureResult = "Build complete · no upgrades available";
+      renderRoomUI();
+      return;
+    }
+
+    game.upgradeChoiceContext = "treasure";
+    game.levelUpPaused = true;
+    game.player.clearKeys();
+    levelUpTitle.textContent = "TREASURE CHEST · CHOOSE A REWARD";
+    renderUpgradeChoices(choices);
+    levelUpPanel.hidden = false;
   }
 
   function openLevelUpIfReady(guaranteed = false) {
@@ -294,11 +521,24 @@
   }
 
   function applyEnemyDamage(enemy, damage) {
-    const dealt = enemy.takeDamage(damage * game.player.stats.damage);
+    const fullDamage = damage * game.player.stats.damage;
+    const wasDead = enemy.isDead;
+    let dealt = enemy.takeDamage(fullDamage);
     if (dealt <= 0) return;
+    const mirrorLevel = game.upgrades.getPassiveLevel("mirrorShard");
+    if (!enemy.isDead && mirrorLevel > 0 && Math.random() < mirrorLevel * 0.1) {
+      dealt += enemy.takeDamage(fullDamage);
+      addDamageNumber("Mirror!", enemy.x, enemy.y - enemy.radius - 18, "#b9d8ff");
+    }
     if (enemy.isBoss) game.runStats.bossDamageDealt += dealt;
     addDamageNumber(dealt, enemy.x, enemy.y - enemy.radius - 7, "#fff0b3");
     game.hitStopFrames = Math.max(game.hitStopFrames, 2);
+    if (!wasDead && enemy.isDead) {
+      spawnDeathBurst(enemy.x, enemy.y);
+      playFeedbackSound("death");
+    } else {
+      playFeedbackSound("hit");
+    }
   }
 
   function markCurrentRoomCleared() {
@@ -374,8 +614,28 @@
     if (dealt > 0) {
       addDamageNumber(`-${dealt}`, game.player.x, game.player.y - game.player.radius - 8, "#ff8178");
       game.hitStopFrames = Math.max(game.hitStopFrames, 2);
+      game.screenShake = Math.max(game.screenShake, 5);
+      playFeedbackSound("hit");
+      renderRunHud();
     }
-    if (game.player.stats.hp <= 0) finishRun(GameState.GAME_OVER);
+    if (game.player.stats.hp <= 0) {
+      if (game.secondWind.permanentAvailable) {
+        game.secondWind.permanentAvailable = false;
+        reviveWithSecondWind("Permanent Second Wind");
+      } else if (game.upgrades.getPassiveLevel("secondWind") > 0 && !game.secondWind.passiveUsed) {
+        game.secondWind.passiveUsed = true;
+        reviveWithSecondWind("Second Wind");
+      } else {
+        finishRun(GameState.GAME_OVER);
+      }
+    }
+  }
+
+  function reviveWithSecondWind(label) {
+    game.player.stats.hp = Math.ceil(game.player.stats.maxHp * 0.5);
+    game.contactDamageCooldown = 1;
+    addDamageNumber(label, game.player.x, game.player.y - game.player.radius - 25, "#f0d782");
+    renderRunHud();
   }
 
   function processDefeatedEnemies() {
@@ -385,6 +645,7 @@
       game.runStats.enemiesDefeated += 1;
       if (enemy.type === "ELITE") game.runStats.elitesDefeated += 1;
       if (enemy.isBoss) game.runStats.bossDefeated = true;
+      game.currency.dropForEnemy(enemy, game.upgrades.getPassiveLevel("luckyCoin"));
       if (!enemy.experienceDropped && enemy.expValue > 0) {
         enemy.experienceDropped = true;
         game.expCrystals.drop(enemy.x, enemy.y, enemy.expValue);
@@ -457,6 +718,8 @@
     renderEvolutionStatus();
 
     const collected = game.expCrystals.collectNearby(game.player);
+    const coinsCollected = game.currency.collectNearby(game.player);
+    if (coinsCollected > 0) renderRunHud();
     if (collected.experience > 0) {
       game.progression.addExperience(collected.experience);
       game.runStats.experienceCollected += collected.experience;
@@ -466,6 +729,7 @@
 
     game.damageNumbers.forEach((damageNumber) => damageNumber.update(deltaSeconds));
     game.damageNumbers = game.damageNumbers.filter((damageNumber) => damageNumber.life > 0);
+    updateParticles(deltaSeconds);
   }
 
   function frame(timestamp) {
@@ -477,13 +741,22 @@
     game.frameCount += 1;
     updateSimulation(deltaSeconds);
     context.clearRect(0, 0, viewportWidth, viewportHeight);
-
+    context.save();
+    if (game.screenShake > 0) {
+      context.translate(
+        (Math.random() - 0.5) * game.screenShake,
+        (Math.random() - 0.5) * game.screenShake,
+      );
+    }
     game.miniMap.draw(context, game.rooms, viewportWidth, viewportHeight);
     game.enemies.draw(context);
     game.expCrystals.draw(context, game.elapsedSeconds);
+    game.currency.draw(context);
     game.weapons.draw(context, game.player);
     game.player.draw(context);
+    drawParticles();
     game.damageNumbers.forEach((damageNumber) => damageNumber.draw(context));
+    context.restore();
 
     if (game.frameCount % 60 === 0) {
       console.log(`[Game Loop] frames: ${game.frameCount}; state: ${game.state}`);

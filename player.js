@@ -27,6 +27,7 @@ window.Player = class Player {
     this.x = window.innerWidth / 2;
     this.y = window.innerHeight / 2;
     this.keysDown = new Set();
+    this.lastMoveDirection = { x: 0, y: -1 };
 
     window.addEventListener("keydown", this.handleKeyDown);
     window.addEventListener("keyup", this.handleKeyUp);
@@ -66,6 +67,7 @@ window.Player = class Player {
     if (magnitude > 0) {
       directionX /= magnitude;
       directionY /= magnitude;
+      this.lastMoveDirection = { x: directionX, y: directionY };
       const distance = this.stats.moveSpeed * deltaSeconds;
       this.x += directionX * distance;
       this.y += directionY * distance;
