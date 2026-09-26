@@ -246,6 +246,18 @@
     return { x: margin, y: margin };
   }
 
+  function getCombatSpawnCounts(progress) {
+    if (progress >= 0.75) return { basicCount: 6, fastCount: 3 };
+    if (progress >= 0.5) return { basicCount: 5, fastCount: 2 };
+    if (progress >= 0.25) return { basicCount: 4, fastCount: 1 };
+    return { basicCount: 3, fastCount: 0 };
+  }
+
+  function getCombatExperienceReward(progress) {
+    const { basicCount, fastCount } = getCombatSpawnCounts(progress);
+    return basicCount * 5 + fastCount * 8;
+  }
+
   window.EnemySystem = class EnemySystem {
     constructor() {
       this.enemies = [];
@@ -265,24 +277,14 @@
         return;
       }
       if (room.type === "ELITE") {
-        this.spawnOne("ELITE", width, height, player);
+        const elite = this.spawnOne("ELITE", width, height, player);
+        elite.expValue = getCombatExperienceReward(room.depth / routeLength) * 2;
         return;
       }
       if (room.type !== "COMBAT") return;
 
       const progress = room.depth / routeLength;
-      let basicCount = 3;
-      let fastCount = 0;
-      if (progress >= 0.75) {
-        basicCount = 6;
-        fastCount = 3;
-      } else if (progress >= 0.5) {
-        basicCount = 5;
-        fastCount = 2;
-      } else if (progress >= 0.25) {
-        basicCount = 4;
-        fastCount = 1;
-      }
+      const { basicCount, fastCount } = getCombatSpawnCounts(progress);
 
       for (let index = 0; index < basicCount; index += 1) {
         this.spawnOne("BASIC", width, height, player);
@@ -294,8 +296,10 @@
 
     spawnOne(type, width, height, player) {
       const position = randomSpawnPosition(width, height, player);
-      this.enemies.push(new Enemy(type, position.x, position.y, this.nextEnemyId));
+      const enemy = new Enemy(type, position.x, position.y, this.nextEnemyId);
+      this.enemies.push(enemy);
       this.nextEnemyId += 1;
+      return enemy;
     }
 
     update(deltaSeconds, player) {

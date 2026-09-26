@@ -253,15 +253,21 @@
     });
   }
 
-  function openLevelUpIfReady() {
+  function openLevelUpIfReady(guaranteed = false) {
     if (game.levelUpPaused || game.ended) return;
-    if (game.progression.experience < game.progression.experienceToNextLevel) return;
+    if (!guaranteed && game.progression.experience < game.progression.experienceToNextLevel) return;
     const choices = game.upgrades.getChoices(game.weapons);
-    if (choices.length === 0 || !game.progression.consumeLevelUp()) return;
+    if (choices.length === 0) return;
+    const levelGranted = guaranteed
+      ? game.progression.grantLevelUp()
+      : game.progression.consumeLevelUp();
+    if (!levelGranted) return;
 
     game.levelUpPaused = true;
     game.player.clearKeys();
-    levelUpTitle.textContent = `LEVEL UP · ${game.progression.level}`;
+    levelUpTitle.textContent = guaranteed
+      ? `ELITE REWARD · LEVEL UP ${game.progression.level}`
+      : `LEVEL UP · ${game.progression.level}`;
     renderUpgradeChoices(choices);
     levelUpPanel.hidden = false;
     renderRunHud();
@@ -429,6 +435,9 @@
         if (enemiesRemaining === 0) {
           game.rooms.markCurrentRoomEncounterCleared();
           markCurrentRoomCleared();
+          if (currentRoom.type === "ELITE") {
+            openLevelUpIfReady(true);
+          }
           if (currentRoom.type === "BOSS") {
             finishRun(GameState.FLOOR_CLEAR);
           }

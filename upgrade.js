@@ -38,6 +38,10 @@
     consumeLevelUp() {
       if (this.experience < this.experienceToNextLevel) return false;
       this.experience -= this.experienceToNextLevel;
+      return this.grantLevelUp();
+    }
+
+    grantLevelUp() {
       this.level += 1;
       this.experienceToNextLevel = 15 + (this.level - 1) * 10;
       return true;
